@@ -104,11 +104,6 @@ import {
   enableFundamentalAPI,
 } from 'shared/ReactFeatureFlags';
 
-let SUPPRESS_HYDRATION_WARNING;
-if (__DEV__) {
-  SUPPRESS_HYDRATION_WARNING = 'suppressHydrationWarning';
-}
-
 const SUSPENSE_START_DATA = '$';
 const SUSPENSE_END_DATA = '/$';
 const SUSPENSE_PENDING_START_DATA = '$?';
@@ -157,11 +152,6 @@ export function getRootHostContext(
       break;
     }
   }
-  if (__DEV__) {
-    const validatedTag = type.toLowerCase();
-    const ancestorInfo = updatedAncestorInfo(null, validatedTag);
-    return {namespace, ancestorInfo};
-  }
   return namespace;
 }
 
@@ -170,15 +160,6 @@ export function getChildHostContext(
   type: string,
   rootContainerInstance: Container,
 ): HostContext {
-  if (__DEV__) {
-    const parentHostContextDev = ((parentHostContext: any): HostContextDev);
-    const namespace = getChildNamespace(parentHostContextDev.namespace, type);
-    const ancestorInfo = updatedAncestorInfo(
-      parentHostContextDev.ancestorInfo,
-      type,
-    );
-    return {namespace, ancestorInfo};
-  }
   const parentNamespace = ((parentHostContext: any): HostContextProd);
   return getChildNamespace(parentNamespace, type);
 }
@@ -208,25 +189,7 @@ export function createInstance(
   internalInstanceHandle: Object,
 ): Instance {
   let parentNamespace: string;
-  if (__DEV__) {
-    // TODO: take namespace into account when validating.
-    const hostContextDev = ((hostContext: any): HostContextDev);
-    validateDOMNesting(type, null, hostContextDev.ancestorInfo);
-    if (
-      typeof props.children === 'string' ||
-      typeof props.children === 'number'
-    ) {
-      const string = '' + props.children;
-      const ownAncestorInfo = updatedAncestorInfo(
-        hostContextDev.ancestorInfo,
-        type,
-      );
-      validateDOMNesting(null, string, ownAncestorInfo);
-    }
-    parentNamespace = hostContextDev.namespace;
-  } else {
-    parentNamespace = ((hostContext: any): HostContextProd);
-  }
+  parentNamespace = ((hostContext: any): HostContextProd);
   const domElement: Instance = createElement(
     type,
     props,
@@ -264,21 +227,6 @@ export function prepareUpdate(
   rootContainerInstance: Container,
   hostContext: HostContext,
 ): null | Array<mixed> {
-  if (__DEV__) {
-    const hostContextDev = ((hostContext: any): HostContextDev);
-    if (
-      typeof newProps.children !== typeof oldProps.children &&
-      (typeof newProps.children === 'string' ||
-        typeof newProps.children === 'number')
-    ) {
-      const string = '' + newProps.children;
-      const ownAncestorInfo = updatedAncestorInfo(
-        hostContextDev.ancestorInfo,
-        type,
-      );
-      validateDOMNesting(null, string, ownAncestorInfo);
-    }
-  }
   return diffProperties(
     domElement,
     type,
@@ -311,10 +259,6 @@ export function createTextInstance(
   hostContext: HostContext,
   internalInstanceHandle: Object,
 ): TextInstance {
-  if (__DEV__) {
-    const hostContextDev = ((hostContext: any): HostContextDev);
-    validateDOMNesting(null, text, hostContextDev.ancestorInfo);
-  }
   const textNode: TextInstance = createTextNode(text, rootContainerInstance);
   precacheFiberNode(internalInstanceHandle, textNode);
   return textNode;
@@ -650,12 +594,7 @@ export function hydrateInstance(
   // get attached.
   updateFiberProps(instance, props);
   let parentNamespace: string;
-  if (__DEV__) {
-    const hostContextDev = ((hostContext: any): HostContextDev);
-    parentNamespace = hostContextDev.namespace;
-  } else {
-    parentNamespace = ((hostContext: any): HostContextProd);
-  }
+  parentNamespace = ((hostContext: any): HostContextProd);
   return diffHydratedProperties(
     instance,
     type,
@@ -705,11 +644,7 @@ export function didNotMatchHydratedContainerTextInstance(
   parentContainer: Container,
   textInstance: TextInstance,
   text: string,
-) {
-  if (__DEV__) {
-    warnForUnmatchedText(textInstance, text);
-  }
-}
+) {}
 
 export function didNotMatchHydratedTextInstance(
   parentType: string,
@@ -717,70 +652,34 @@ export function didNotMatchHydratedTextInstance(
   parentInstance: Instance,
   textInstance: TextInstance,
   text: string,
-) {
-  if (__DEV__ && parentProps[SUPPRESS_HYDRATION_WARNING] !== true) {
-    warnForUnmatchedText(textInstance, text);
-  }
-}
+) {}
 
 export function didNotHydrateContainerInstance(
   parentContainer: Container,
   instance: HydratableInstance,
-) {
-  if (__DEV__) {
-    if (instance.nodeType === ELEMENT_NODE) {
-      warnForDeletedHydratableElement(parentContainer, (instance: any));
-    } else if (instance.nodeType === COMMENT_NODE) {
-      // TODO: warnForDeletedHydratableSuspenseBoundary
-    } else {
-      warnForDeletedHydratableText(parentContainer, (instance: any));
-    }
-  }
-}
+) {}
 
 export function didNotHydrateInstance(
   parentType: string,
   parentProps: Props,
   parentInstance: Instance,
   instance: HydratableInstance,
-) {
-  if (__DEV__ && parentProps[SUPPRESS_HYDRATION_WARNING] !== true) {
-    if (instance.nodeType === ELEMENT_NODE) {
-      warnForDeletedHydratableElement(parentInstance, (instance: any));
-    } else if (instance.nodeType === COMMENT_NODE) {
-      // TODO: warnForDeletedHydratableSuspenseBoundary
-    } else {
-      warnForDeletedHydratableText(parentInstance, (instance: any));
-    }
-  }
-}
+) {}
 
 export function didNotFindHydratableContainerInstance(
   parentContainer: Container,
   type: string,
   props: Props,
-) {
-  if (__DEV__) {
-    warnForInsertedHydratedElement(parentContainer, type, props);
-  }
-}
+) {}
 
 export function didNotFindHydratableContainerTextInstance(
   parentContainer: Container,
   text: string,
-) {
-  if (__DEV__) {
-    warnForInsertedHydratedText(parentContainer, text);
-  }
-}
+) {}
 
 export function didNotFindHydratableContainerSuspenseInstance(
   parentContainer: Container,
-) {
-  if (__DEV__) {
-    // TODO: warnForInsertedHydratedSupsense(parentContainer);
-  }
-}
+) {}
 
 export function didNotFindHydratableInstance(
   parentType: string,
@@ -788,32 +687,20 @@ export function didNotFindHydratableInstance(
   parentInstance: Instance,
   type: string,
   props: Props,
-) {
-  if (__DEV__ && parentProps[SUPPRESS_HYDRATION_WARNING] !== true) {
-    warnForInsertedHydratedElement(parentInstance, type, props);
-  }
-}
+) {}
 
 export function didNotFindHydratableTextInstance(
   parentType: string,
   parentProps: Props,
   parentInstance: Instance,
   text: string,
-) {
-  if (__DEV__ && parentProps[SUPPRESS_HYDRATION_WARNING] !== true) {
-    warnForInsertedHydratedText(parentInstance, text);
-  }
-}
+) {}
 
 export function didNotFindHydratableSuspenseInstance(
   parentType: string,
   parentProps: Props,
   parentInstance: Instance,
-) {
-  if (__DEV__ && parentProps[SUPPRESS_HYDRATION_WARNING] !== true) {
-    // TODO: warnForInsertedHydratedSuspense(parentInstance);
-  }
-}
+) {}
 
 export function mountResponderInstance(
   responder: ReactDOMEventResponder,
