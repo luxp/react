@@ -57,7 +57,6 @@ import {
   discreteUpdates,
   flushDiscreteUpdates,
   flushPassiveEffects,
-  warnIfNotScopedWithMatchingAct,
   IsThisRendererActing,
 } from './ReactFiberWorkLoop';
 import {createUpdate, enqueueUpdate} from './ReactUpdateQueue';
@@ -100,11 +99,6 @@ type DevToolsConfig = {|
 let didWarnAboutNestedUpdates;
 let didWarnAboutFindNodeInStrictMode;
 
-if (__DEV__) {
-  didWarnAboutNestedUpdates = false;
-  didWarnAboutFindNodeInStrictMode = {};
-}
-
 function getContextForSubtree(
   parentComponent: ?React$Component<any, any>,
 ): Object {
@@ -132,24 +126,6 @@ function scheduleRootUpdate(
   suspenseConfig: null | SuspenseConfig,
   callback: ?Function,
 ) {
-  if (__DEV__) {
-    if (
-      ReactCurrentFiberPhase === 'render' &&
-      ReactCurrentFiberCurrent !== null &&
-      !didWarnAboutNestedUpdates
-    ) {
-      didWarnAboutNestedUpdates = true;
-      warningWithoutStack(
-        false,
-        'Render methods should be a pure function of props and state; ' +
-          'triggering nested component updates from render is not allowed. ' +
-          'If necessary, trigger nested updates in componentDidUpdate.\n\n' +
-          'Check the render method of %s.',
-        getComponentName(ReactCurrentFiberCurrent.type) || 'Unknown',
-      );
-    }
-  }
-
   const update = createUpdate(expirationTime, suspenseConfig);
   // Caution: React DevTools currently depends on this property
   // being called "element".
@@ -185,18 +161,6 @@ export function updateContainerAtExpirationTime(
 ) {
   // TODO: If this is a nested container, this won't be the root.
   const current = container.current;
-
-  if (__DEV__) {
-    if (ReactFiberInstrumentation.debugTool) {
-      if (current.alternate === null) {
-        ReactFiberInstrumentation.debugTool.onMountContainer(container);
-      } else if (element === null) {
-        ReactFiberInstrumentation.debugTool.onUnmountContainer(container);
-      } else {
-        ReactFiberInstrumentation.debugTool.onUpdateContainer(container);
-      }
-    }
-  }
 
   const context = getContextForSubtree(parentComponent);
   if (container.context === null) {
@@ -311,12 +275,6 @@ export function updateContainer(
 ): ExpirationTime {
   const current = container.current;
   const currentTime = requestCurrentTime();
-  if (__DEV__) {
-    // $FlowExpectedError - jest isn't a global, and isn't recognized outside of tests
-    if ('undefined' !== typeof jest) {
-      warnIfNotScopedWithMatchingAct(current);
-    }
-  }
   const suspenseConfig = requestCurrentSuspenseConfig();
   const expirationTime = computeExpirationForFiber(
     currentTime,

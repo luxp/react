@@ -21,7 +21,6 @@ import {
   warnAboutDeprecatedLifecycles,
   enableUserTimingAPI,
   enableSuspenseServerRenderer,
-  replayFailedUnitOfWorkWithInvokeGuardedCallback,
   enableProfilerTimer,
   enableSchedulerTracing,
   revertPassiveEffectsChange,
@@ -55,13 +54,11 @@ import {
   scheduleTimeout,
   cancelTimeout,
   noTimeout,
-  warnsIfNotActing,
 } from './ReactFiberHostConfig';
 
-import {createWorkInProgress, assignFiberPropertiesInDEV} from './ReactFiber';
+import {createWorkInProgress} from './ReactFiber';
 import {
   NoMode,
-  StrictMode,
   ProfileMode,
   BatchedMode,
   ConcurrentMode,
@@ -792,12 +789,6 @@ function prepareFreshStack(root, expirationTime) {
   if (enableSchedulerTracing) {
     spawnedWorkDuringRender = null;
   }
-
-  if (__DEV__) {
-    ReactStrictModeWarnings.discardPendingWarnings();
-    componentsThatSuspendedAtHighPri = null;
-    componentsThatTriggeredHighPriSuspend = null;
-  }
 }
 
 function renderRoot(
@@ -927,13 +918,6 @@ function renderRoot(
           prepareFreshStack(root, expirationTime);
           executionContext = prevExecutionContext;
           throw thrownValue;
-        }
-
-        if (enableProfilerTimer && sourceFiber.mode & ProfileMode) {
-          // Record the time spent rendering before an error was thrown. This
-          // avoids inaccurate Profiler durations in the case of a
-          // suspended render.
-          stopProfilerTimerIfRunningAndRecordDelta(sourceFiber, true);
         }
 
         const returnFiber = sourceFiber.return;
@@ -1258,15 +1242,8 @@ function performUnitOfWork(unitOfWork: Fiber): Fiber | null {
   setCurrentDebugFiberInDEV(unitOfWork);
 
   let next;
-  if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) {
-    startProfilerTimer(unitOfWork);
-    next = beginWork(current, unitOfWork, renderExpirationTime);
-    stopProfilerTimerIfRunningAndRecordDelta(unitOfWork, true);
-  } else {
-    next = beginWork(current, unitOfWork, renderExpirationTime);
-  }
+  next = beginWork(current, unitOfWork, renderExpirationTime);
 
-  resetCurrentDebugFiberInDEV();
   unitOfWork.memoizedProps = unitOfWork.pendingProps;
   if (next === null) {
     // If this doesn't spawn new work, complete the current work.
@@ -1290,7 +1267,6 @@ function completeUnitOfWork(unitOfWork: Fiber): Fiber | null {
 
     // Check if the work completed or if something threw.
     if ((workInProgress.effectTag & Incomplete) === NoEffect) {
-      setCurrentDebugFiberInDEV(workInProgress);
       let next;
       if (
         !enableProfilerTimer ||
@@ -1588,22 +1564,12 @@ function commitRootImpl(root) {
     prepareForCommit(root.containerInfo);
     nextEffect = firstEffect;
     do {
-      if (__DEV__) {
-        invokeGuardedCallback(null, commitBeforeMutationEffects, null);
-        if (hasCaughtError()) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
-          const error = clearCaughtError();
-          captureCommitPhaseError(nextEffect, error);
-          nextEffect = nextEffect.nextEffect;
-        }
-      } else {
-        try {
-          commitBeforeMutationEffects();
-        } catch (error) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
-          captureCommitPhaseError(nextEffect, error);
-          nextEffect = nextEffect.nextEffect;
-        }
+      try {
+        commitBeforeMutationEffects();
+      } catch (error) {
+        invariant(nextEffect !== null, 'Should be working on an effect.');
+        captureCommitPhaseError(nextEffect, error);
+        nextEffect = nextEffect.nextEffect;
       }
     } while (nextEffect !== null);
     stopCommitSnapshotEffectsTimer();
@@ -1618,22 +1584,12 @@ function commitRootImpl(root) {
     startCommitHostEffectsTimer();
     nextEffect = firstEffect;
     do {
-      if (__DEV__) {
-        invokeGuardedCallback(null, commitMutationEffects, null);
-        if (hasCaughtError()) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
-          const error = clearCaughtError();
-          captureCommitPhaseError(nextEffect, error);
-          nextEffect = nextEffect.nextEffect;
-        }
-      } else {
-        try {
-          commitMutationEffects();
-        } catch (error) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
-          captureCommitPhaseError(nextEffect, error);
-          nextEffect = nextEffect.nextEffect;
-        }
+      try {
+        commitMutationEffects();
+      } catch (error) {
+        invariant(nextEffect !== null, 'Should be working on an effect.');
+        captureCommitPhaseError(nextEffect, error);
+        nextEffect = nextEffect.nextEffect;
       }
     } while (nextEffect !== null);
     stopCommitHostEffectsTimer();
@@ -1651,28 +1607,12 @@ function commitRootImpl(root) {
     startCommitLifeCyclesTimer();
     nextEffect = firstEffect;
     do {
-      if (__DEV__) {
-        invokeGuardedCallback(
-          null,
-          commitLayoutEffects,
-          null,
-          root,
-          expirationTime,
-        );
-        if (hasCaughtError()) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
-          const error = clearCaughtError();
-          captureCommitPhaseError(nextEffect, error);
-          nextEffect = nextEffect.nextEffect;
-        }
-      } else {
-        try {
-          commitLayoutEffects(root, expirationTime);
-        } catch (error) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
-          captureCommitPhaseError(nextEffect, error);
-          nextEffect = nextEffect.nextEffect;
-        }
+      try {
+        commitLayoutEffects(root, expirationTime);
+      } catch (error) {
+        invariant(nextEffect !== null, 'Should be working on an effect.');
+        captureCommitPhaseError(nextEffect, error);
+        nextEffect = nextEffect.nextEffect;
       }
     } while (nextEffect !== null);
     stopCommitLifeCyclesTimer();
@@ -2336,346 +2276,23 @@ function warnAboutUpdateOnUnmountedFiberInDEV(fiber) {
 }
 
 let beginWork;
-if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-  let dummyFiber = null;
-  beginWork = (current, unitOfWork, expirationTime) => {
-    // If a component throws an error, we replay it again in a synchronously
-    // dispatched event, so that the debugger will treat it as an uncaught
-    // error See ReactErrorUtils for more information.
+beginWork = originalBeginWork;
 
-    // Before entering the begin phase, copy the work-in-progress onto a dummy
-    // fiber. If beginWork throws, we'll use this to reset the state.
-    const originalWorkInProgressCopy = assignFiberPropertiesInDEV(
-      dummyFiber,
-      unitOfWork,
-    );
-    try {
-      return originalBeginWork(current, unitOfWork, expirationTime);
-    } catch (originalError) {
-      if (
-        originalError !== null &&
-        typeof originalError === 'object' &&
-        typeof originalError.then === 'function'
-      ) {
-        // Don't replay promises. Treat everything else like an error.
-        throw originalError;
-      }
-
-      // Keep this code in sync with renderRoot; any changes here must have
-      // corresponding changes there.
-      resetContextDependencies();
-      resetHooks();
-
-      // Unwind the failed stack frame
-      unwindInterruptedWork(unitOfWork);
-
-      // Restore the original properties of the fiber.
-      assignFiberPropertiesInDEV(unitOfWork, originalWorkInProgressCopy);
-
-      if (enableProfilerTimer && unitOfWork.mode & ProfileMode) {
-        // Reset the profiler timer.
-        startProfilerTimer(unitOfWork);
-      }
-
-      // Run beginWork again.
-      invokeGuardedCallback(
-        null,
-        originalBeginWork,
-        null,
-        current,
-        unitOfWork,
-        expirationTime,
-      );
-
-      if (hasCaughtError()) {
-        const replayError = clearCaughtError();
-        // `invokeGuardedCallback` sometimes sets an expando `_suppressLogging`.
-        // Rethrow this error instead of the original one.
-        throw replayError;
-      } else {
-        // This branch is reachable if the render phase is impure.
-        throw originalError;
-      }
-    }
-  };
-} else {
-  beginWork = originalBeginWork;
-}
-
-let didWarnAboutUpdateInRender = false;
-let didWarnAboutUpdateInGetChildContext = false;
-function warnAboutInvalidUpdatesOnClassComponentsInDEV(fiber) {
-  if (__DEV__) {
-    if (fiber.tag === ClassComponent) {
-      switch (ReactCurrentDebugFiberPhaseInDEV) {
-        case 'getChildContext':
-          if (didWarnAboutUpdateInGetChildContext) {
-            return;
-          }
-          warningWithoutStack(
-            false,
-            'setState(...): Cannot call setState() inside getChildContext()',
-          );
-          didWarnAboutUpdateInGetChildContext = true;
-          break;
-        case 'render':
-          if (didWarnAboutUpdateInRender) {
-            return;
-          }
-          warningWithoutStack(
-            false,
-            'Cannot update during an existing state transition (such as ' +
-              'within `render`). Render methods should be a pure function of ' +
-              'props and state.',
-          );
-          didWarnAboutUpdateInRender = true;
-          break;
-      }
-    }
-  }
-}
+function warnAboutInvalidUpdatesOnClassComponentsInDEV(fiber) {}
 
 export const IsThisRendererActing = {current: (false: boolean)};
 
-export function warnIfNotScopedWithMatchingAct(fiber: Fiber): void {
-  if (__DEV__) {
-    if (
-      warnsIfNotActing === true &&
-      IsSomeRendererActing.current === true &&
-      IsThisRendererActing.current !== true
-    ) {
-      warningWithoutStack(
-        false,
-        "It looks like you're using the wrong act() around your test interactions.\n" +
-          'Be sure to use the matching version of act() corresponding to your renderer:\n\n' +
-          '// for react-dom:\n' +
-          "import {act} from 'react-dom/test-utils';\n" +
-          '//...\n' +
-          'act(() => ...);\n\n' +
-          '// for react-test-renderer:\n' +
-          "import TestRenderer from 'react-test-renderer';\n" +
-          'const {act} = TestRenderer;\n' +
-          '//...\n' +
-          'act(() => ...);' +
-          '%s',
-        getStackByFiberInDevAndProd(fiber),
-      );
-    }
-  }
-}
+export function warnIfNotScopedWithMatchingAct(fiber: Fiber): void {}
 
-export function warnIfNotCurrentlyActingEffectsInDEV(fiber: Fiber): void {
-  if (__DEV__) {
-    if (
-      warnsIfNotActing === true &&
-      (fiber.mode & StrictMode) !== NoMode &&
-      IsSomeRendererActing.current === false &&
-      IsThisRendererActing.current === false
-    ) {
-      warningWithoutStack(
-        false,
-        'An update to %s ran an effect, but was not wrapped in act(...).\n\n' +
-          'When testing, code that causes React state updates should be ' +
-          'wrapped into act(...):\n\n' +
-          'act(() => {\n' +
-          '  /* fire events that update state */\n' +
-          '});\n' +
-          '/* assert on the output */\n\n' +
-          "This ensures that you're testing the behavior the user would see " +
-          'in the browser.' +
-          ' Learn more at https://fb.me/react-wrap-tests-with-act' +
-          '%s',
-        getComponentName(fiber.type),
-        getStackByFiberInDevAndProd(fiber),
-      );
-    }
-  }
-}
+export function warnIfNotCurrentlyActingEffectsInDEV(fiber: Fiber): void {}
 
-function warnIfNotCurrentlyActingUpdatesInDEV(fiber: Fiber): void {
-  if (__DEV__) {
-    if (
-      warnsIfNotActing === true &&
-      executionContext === NoContext &&
-      IsSomeRendererActing.current === false &&
-      IsThisRendererActing.current === false
-    ) {
-      warningWithoutStack(
-        false,
-        'An update to %s inside a test was not wrapped in act(...).\n\n' +
-          'When testing, code that causes React state updates should be ' +
-          'wrapped into act(...):\n\n' +
-          'act(() => {\n' +
-          '  /* fire events that update state */\n' +
-          '});\n' +
-          '/* assert on the output */\n\n' +
-          "This ensures that you're testing the behavior the user would see " +
-          'in the browser.' +
-          ' Learn more at https://fb.me/react-wrap-tests-with-act' +
-          '%s',
-        getComponentName(fiber.type),
-        getStackByFiberInDevAndProd(fiber),
-      );
-    }
-  }
-}
+function warnIfNotCurrentlyActingUpdatesInDEV(fiber: Fiber): void {}
 
 export const warnIfNotCurrentlyActingUpdatesInDev = warnIfNotCurrentlyActingUpdatesInDEV;
 
-let componentsThatSuspendedAtHighPri = null;
-let componentsThatTriggeredHighPriSuspend = null;
-export function checkForWrongSuspensePriorityInDEV(sourceFiber: Fiber) {
-  if (__DEV__) {
-    const currentPriorityLevel = getCurrentPriorityLevel();
-    if (
-      (sourceFiber.mode & ConcurrentMode) !== NoEffect &&
-      (currentPriorityLevel === UserBlockingPriority ||
-        currentPriorityLevel === ImmediatePriority)
-    ) {
-      let workInProgressNode = sourceFiber;
-      while (workInProgressNode !== null) {
-        // Add the component that triggered the suspense
-        const current = workInProgressNode.alternate;
-        if (current !== null) {
-          // TODO: warn component that triggers the high priority
-          // suspend is the HostRoot
-          switch (workInProgressNode.tag) {
-            case ClassComponent:
-              // Loop through the component's update queue and see whether the component
-              // has triggered any high priority updates
-              const updateQueue = current.updateQueue;
-              if (updateQueue !== null) {
-                let update = updateQueue.firstUpdate;
-                while (update !== null) {
-                  const priorityLevel = update.priority;
-                  if (
-                    priorityLevel === UserBlockingPriority ||
-                    priorityLevel === ImmediatePriority
-                  ) {
-                    if (componentsThatTriggeredHighPriSuspend === null) {
-                      componentsThatTriggeredHighPriSuspend = new Set([
-                        getComponentName(workInProgressNode.type),
-                      ]);
-                    } else {
-                      componentsThatTriggeredHighPriSuspend.add(
-                        getComponentName(workInProgressNode.type),
-                      );
-                    }
-                    break;
-                  }
-                  update = update.next;
-                }
-              }
-              break;
-            case FunctionComponent:
-            case ForwardRef:
-            case SimpleMemoComponent:
-              if (
-                workInProgressNode.memoizedState !== null &&
-                workInProgressNode.memoizedState.baseUpdate !== null
-              ) {
-                let update = workInProgressNode.memoizedState.baseUpdate;
-                // Loop through the functional component's memoized state to see whether
-                // the component has triggered any high pri updates
-                while (update !== null) {
-                  const priority = update.priority;
-                  if (
-                    priority === UserBlockingPriority ||
-                    priority === ImmediatePriority
-                  ) {
-                    if (componentsThatTriggeredHighPriSuspend === null) {
-                      componentsThatTriggeredHighPriSuspend = new Set([
-                        getComponentName(workInProgressNode.type),
-                      ]);
-                    } else {
-                      componentsThatTriggeredHighPriSuspend.add(
-                        getComponentName(workInProgressNode.type),
-                      );
-                    }
-                    break;
-                  }
-                  if (
-                    update.next === workInProgressNode.memoizedState.baseUpdate
-                  ) {
-                    break;
-                  }
-                  update = update.next;
-                }
-              }
-              break;
-            default:
-              break;
-          }
-        }
-        workInProgressNode = workInProgressNode.return;
-      }
+export function checkForWrongSuspensePriorityInDEV(sourceFiber: Fiber) {}
 
-      // Add the component name to a set.
-      const componentName = getComponentName(sourceFiber.type);
-      if (componentsThatSuspendedAtHighPri === null) {
-        componentsThatSuspendedAtHighPri = new Set([componentName]);
-      } else {
-        componentsThatSuspendedAtHighPri.add(componentName);
-      }
-    }
-  }
-}
-
-function flushSuspensePriorityWarningInDEV() {
-  if (__DEV__) {
-    if (componentsThatSuspendedAtHighPri !== null) {
-      const componentNames = [];
-      componentsThatSuspendedAtHighPri.forEach(name => {
-        componentNames.push(name);
-      });
-      componentsThatSuspendedAtHighPri = null;
-
-      const componentsThatTriggeredSuspendNames = [];
-      if (componentsThatTriggeredHighPriSuspend !== null) {
-        componentsThatTriggeredHighPriSuspend.forEach(name =>
-          componentsThatTriggeredSuspendNames.push(name),
-        );
-      }
-
-      componentsThatTriggeredHighPriSuspend = null;
-
-      const componentNamesString = componentNames.sort().join(', ');
-      let componentThatTriggeredSuspenseError = '';
-      if (componentsThatTriggeredSuspendNames.length > 0) {
-        componentThatTriggeredSuspenseError =
-          'The following components triggered a user-blocking update:' +
-          '\n\n' +
-          '  ' +
-          componentsThatTriggeredSuspendNames.sort().join(', ') +
-          '\n\n' +
-          'that was then suspended by:' +
-          '\n\n' +
-          '  ' +
-          componentNamesString;
-      } else {
-        componentThatTriggeredSuspenseError =
-          'A user-blocking update was suspended by:' +
-          '\n\n' +
-          '  ' +
-          componentNamesString;
-      }
-
-      warningWithoutStack(
-        false,
-        '%s' +
-          '\n\n' +
-          'The fix is to split the update into multiple parts: a user-blocking ' +
-          'update to provide immediate feedback, and another update that ' +
-          'triggers the bulk of the changes.' +
-          '\n\n' +
-          'Refer to the documentation for useSuspenseTransition to learn how ' +
-          'to implement this pattern.',
-        // TODO: Add link to React docs with more information, once it exists
-        componentThatTriggeredSuspenseError,
-      );
-    }
-  }
-}
+function flushSuspensePriorityWarningInDEV() {}
 
 function computeThreadID(root, expirationTime) {
   // Interaction threads are unique per root and expiration time.
