@@ -1268,19 +1268,8 @@ function completeUnitOfWork(unitOfWork: Fiber): Fiber | null {
     // Check if the work completed or if something threw.
     if ((workInProgress.effectTag & Incomplete) === NoEffect) {
       let next;
-      if (
-        !enableProfilerTimer ||
-        (workInProgress.mode & ProfileMode) === NoMode
-      ) {
-        next = completeWork(current, workInProgress, renderExpirationTime);
-      } else {
-        startProfilerTimer(workInProgress);
-        next = completeWork(current, workInProgress, renderExpirationTime);
-        // Update render duration assuming we didn't error.
-        stopProfilerTimerIfRunningAndRecordDelta(workInProgress, false);
-      }
+      next = completeWork(current, workInProgress, renderExpirationTime);
       stopWorkTimer(workInProgress);
-      resetCurrentDebugFiberInDEV();
       resetChildExpirationTime(workInProgress);
 
       if (next !== null) {

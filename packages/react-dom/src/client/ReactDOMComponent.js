@@ -112,157 +112,7 @@ let warnForExtraAttributes;
 let warnForInvalidEventListener;
 let canDiffStyleForHydrationWarning;
 
-let normalizeMarkupForTextOrAttribute;
 let normalizeHTML;
-
-if (__DEV__) {
-  warnedUnknownTags = {
-    // Chrome is the only major browser not shipping <time>. But as of July
-    // 2017 it intends to ship it due to widespread usage. We intentionally
-    // *don't* warn for <time> even if it's unrecognized by Chrome because
-    // it soon will be, and many apps have been using it anyway.
-    time: true,
-    // There are working polyfills for <dialog>. Let people use it.
-    dialog: true,
-    // Electron ships a custom <webview> tag to display external web content in
-    // an isolated frame and process.
-    // This tag is not present in non Electron environments such as JSDom which
-    // is often used for testing purposes.
-    // @see https://electronjs.org/docs/api/webview-tag
-    webview: true,
-  };
-
-  validatePropertiesInDevelopment = function(type, props) {
-    validateARIAProperties(type, props);
-    validateInputProperties(type, props);
-    validateUnknownProperties(type, props, /* canUseEventSystem */ true);
-  };
-
-  // IE 11 parses & normalizes the style attribute as opposed to other
-  // browsers. It adds spaces and sorts the properties in some
-  // non-alphabetical order. Handling that would require sorting CSS
-  // properties in the client & server versions or applying
-  // `expectedStyle` to a temporary DOM node to read its `style` attribute
-  // normalized. Since it only affects IE, we're skipping style warnings
-  // in that browser completely in favor of doing all that work.
-  // See https://github.com/facebook/react/issues/11807
-  canDiffStyleForHydrationWarning = canUseDOM && !document.documentMode;
-
-  // HTML parsing normalizes CR and CRLF to LF.
-  // It also can turn \u0000 into \uFFFD inside attributes.
-  // https://www.w3.org/TR/html5/single-page.html#preprocessing-the-input-stream
-  // If we have a mismatch, it might be caused by that.
-  // We will still patch up in this case but not fire the warning.
-  const NORMALIZE_NEWLINES_REGEX = /\r\n?/g;
-  const NORMALIZE_NULL_AND_REPLACEMENT_REGEX = /\u0000|\uFFFD/g;
-
-  normalizeMarkupForTextOrAttribute = function(markup: mixed): string {
-    const markupString =
-      typeof markup === 'string' ? markup : '' + (markup: any);
-    return markupString
-      .replace(NORMALIZE_NEWLINES_REGEX, '\n')
-      .replace(NORMALIZE_NULL_AND_REPLACEMENT_REGEX, '');
-  };
-
-  warnForTextDifference = function(
-    serverText: string,
-    clientText: string | number,
-  ) {
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    const normalizedClientText = normalizeMarkupForTextOrAttribute(clientText);
-    const normalizedServerText = normalizeMarkupForTextOrAttribute(serverText);
-    if (normalizedServerText === normalizedClientText) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    warningWithoutStack(
-      false,
-      'Text content did not match. Server: "%s" Client: "%s"',
-      normalizedServerText,
-      normalizedClientText,
-    );
-  };
-
-  warnForPropDifference = function(
-    propName: string,
-    serverValue: mixed,
-    clientValue: mixed,
-  ) {
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    const normalizedClientValue = normalizeMarkupForTextOrAttribute(
-      clientValue,
-    );
-    const normalizedServerValue = normalizeMarkupForTextOrAttribute(
-      serverValue,
-    );
-    if (normalizedServerValue === normalizedClientValue) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    warningWithoutStack(
-      false,
-      'Prop `%s` did not match. Server: %s Client: %s',
-      propName,
-      JSON.stringify(normalizedServerValue),
-      JSON.stringify(normalizedClientValue),
-    );
-  };
-
-  warnForExtraAttributes = function(attributeNames: Set<string>) {
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    const names = [];
-    attributeNames.forEach(function(name) {
-      names.push(name);
-    });
-    warningWithoutStack(false, 'Extra attributes from the server: %s', names);
-  };
-
-  warnForInvalidEventListener = function(registrationName, listener) {
-    if (listener === false) {
-      warning(
-        false,
-        'Expected `%s` listener to be a function, instead got `false`.\n\n' +
-          'If you used to conditionally omit it with %s={condition && value}, ' +
-          'pass %s={condition ? value : undefined} instead.',
-        registrationName,
-        registrationName,
-        registrationName,
-      );
-    } else {
-      warning(
-        false,
-        'Expected `%s` listener to be a function, instead got a value of `%s` type.',
-        registrationName,
-        typeof listener,
-      );
-    }
-  };
-
-  // Parse the HTML and read it back to normalize the HTML string so that it
-  // can be used for comparison.
-  normalizeHTML = function(parent: Element, html: string) {
-    // We could have created a separate document here to avoid
-    // re-initializing custom elements if they exist. But this breaks
-    // how <noscript> is being handled. So we use the same document.
-    // See the discussion in https://github.com/facebook/react/pull/11157.
-    const testElement =
-      parent.namespaceURI === HTML_NAMESPACE
-        ? parent.ownerDocument.createElement(parent.tagName)
-        : parent.ownerDocument.createElementNS(
-            (parent.namespaceURI: any),
-            parent.tagName,
-          );
-    testElement.innerHTML = html;
-    return testElement.innerHTML;
-  };
-}
 
 function ensureListeningTo(
   rootContainerElement: Element | Node,
@@ -798,9 +648,6 @@ export function diffProperties(
     } else if (registrationNameModules.hasOwnProperty(propKey)) {
       if (nextProp != null) {
         // We eagerly listen to this even though we haven't committed yet.
-        if (__DEV__ && typeof nextProp !== 'function') {
-          warnForInvalidEventListener(propKey, nextProp);
-        }
         ensureListeningTo(rootContainerElement, propKey);
       }
       if (!updatePayload && lastProp !== nextProp) {
@@ -816,9 +663,6 @@ export function diffProperties(
     }
   }
   if (styleUpdates) {
-    if (__DEV__) {
-      validateShorthandPropertyCollisionInDev(styleUpdates, nextProps[STYLE]);
-    }
     (updatePayload = updatePayload || []).push(STYLE, styleUpdates);
   }
   return updatePayload;
@@ -873,17 +717,6 @@ export function updateProperties(
   }
 }
 
-function getPossibleStandardName(propName: string): string | null {
-  if (__DEV__) {
-    const lowerCasedName = propName.toLowerCase();
-    if (!possibleStandardNames.hasOwnProperty(lowerCasedName)) {
-      return null;
-    }
-    return possibleStandardNames[lowerCasedName] || null;
-  }
-  return null;
-}
-
 export function diffHydratedProperties(
   domElement: Element,
   tag: string,
@@ -891,28 +724,6 @@ export function diffHydratedProperties(
   parentNamespace: string,
   rootContainerElement: Element | Document,
 ): null | Array<mixed> {
-  let isCustomComponentTag;
-  let extraAttributeNames: Set<string>;
-
-  if (__DEV__) {
-    suppressHydrationWarning = rawProps[SUPPRESS_HYDRATION_WARNING] === true;
-    isCustomComponentTag = isCustomComponent(tag, rawProps);
-    validatePropertiesInDevelopment(tag, rawProps);
-    if (
-      isCustomComponentTag &&
-      !didWarnShadyDOM &&
-      (domElement: any).shadyRoot
-    ) {
-      warning(
-        false,
-        '%s is using shady DOM. Using shady DOM with React can ' +
-          'cause things to break subtly.',
-        getCurrentFiberOwnerNameInDevOrNull() || 'A component',
-      );
-      didWarnShadyDOM = true;
-    }
-  }
-
   // TODO: Make sure that we check isMounted before firing any of these events.
   switch (tag) {
     case 'iframe':
@@ -971,31 +782,6 @@ export function diffHydratedProperties(
 
   assertValidProps(tag, rawProps);
 
-  if (__DEV__) {
-    extraAttributeNames = new Set();
-    const attributes = domElement.attributes;
-    for (let i = 0; i < attributes.length; i++) {
-      const name = attributes[i].name.toLowerCase();
-      switch (name) {
-        // Built-in SSR attribute is whitelisted
-        case 'data-reactroot':
-          break;
-        // Controlled attributes are not validated
-        // TODO: Only ignore them on controlled tags.
-        case 'value':
-          break;
-        case 'checked':
-          break;
-        case 'selected':
-          break;
-        default:
-          // Intentionally use the original name.
-          // See discussion in https://github.com/facebook/react/pull/10676.
-          extraAttributeNames.add(attributes[i].name);
-      }
-    }
-  }
-
   let updatePayload = null;
   for (const propKey in rawProps) {
     if (!rawProps.hasOwnProperty(propKey)) {
@@ -1014,133 +800,17 @@ export function diffHydratedProperties(
       // TODO: Should we use domElement.firstChild.nodeValue to compare?
       if (typeof nextProp === 'string') {
         if (domElement.textContent !== nextProp) {
-          if (__DEV__ && !suppressHydrationWarning) {
-            warnForTextDifference(domElement.textContent, nextProp);
-          }
           updatePayload = [CHILDREN, nextProp];
         }
       } else if (typeof nextProp === 'number') {
         if (domElement.textContent !== '' + nextProp) {
-          if (__DEV__ && !suppressHydrationWarning) {
-            warnForTextDifference(domElement.textContent, nextProp);
-          }
           updatePayload = [CHILDREN, '' + nextProp];
         }
       }
     } else if (registrationNameModules.hasOwnProperty(propKey)) {
       if (nextProp != null) {
-        if (__DEV__ && typeof nextProp !== 'function') {
-          warnForInvalidEventListener(propKey, nextProp);
-        }
         ensureListeningTo(rootContainerElement, propKey);
       }
-    } else if (
-      __DEV__ &&
-      // Convince Flow we've calculated it (it's DEV-only in this method.)
-      typeof isCustomComponentTag === 'boolean'
-    ) {
-      // Validate that the properties correspond to their expected values.
-      let serverValue;
-      const propertyInfo = getPropertyInfo(propKey);
-      if (suppressHydrationWarning) {
-        // Don't bother comparing. We're ignoring all these warnings.
-      } else if (
-        (enableFlareAPI && propKey === RESPONDERS) ||
-        propKey === SUPPRESS_CONTENT_EDITABLE_WARNING ||
-        propKey === SUPPRESS_HYDRATION_WARNING ||
-        // Controlled attributes are not validated
-        // TODO: Only ignore them on controlled tags.
-        propKey === 'value' ||
-        propKey === 'checked' ||
-        propKey === 'selected'
-      ) {
-        // Noop
-      } else if (propKey === DANGEROUSLY_SET_INNER_HTML) {
-        const serverHTML = domElement.innerHTML;
-        const nextHtml = nextProp ? nextProp[HTML] : undefined;
-        const expectedHTML = normalizeHTML(
-          domElement,
-          nextHtml != null ? nextHtml : '',
-        );
-        if (expectedHTML !== serverHTML) {
-          warnForPropDifference(propKey, serverHTML, expectedHTML);
-        }
-      } else if (propKey === STYLE) {
-        // $FlowFixMe - Should be inferred as not undefined.
-        extraAttributeNames.delete(propKey);
-
-        if (canDiffStyleForHydrationWarning) {
-          const expectedStyle = createDangerousStringForStyles(nextProp);
-          serverValue = domElement.getAttribute('style');
-          if (expectedStyle !== serverValue) {
-            warnForPropDifference(propKey, serverValue, expectedStyle);
-          }
-        }
-      } else if (isCustomComponentTag) {
-        // $FlowFixMe - Should be inferred as not undefined.
-        extraAttributeNames.delete(propKey.toLowerCase());
-        serverValue = getValueForAttribute(domElement, propKey, nextProp);
-
-        if (nextProp !== serverValue) {
-          warnForPropDifference(propKey, serverValue, nextProp);
-        }
-      } else if (
-        !shouldIgnoreAttribute(propKey, propertyInfo, isCustomComponentTag) &&
-        !shouldRemoveAttribute(
-          propKey,
-          nextProp,
-          propertyInfo,
-          isCustomComponentTag,
-        )
-      ) {
-        let isMismatchDueToBadCasing = false;
-        if (propertyInfo !== null) {
-          // $FlowFixMe - Should be inferred as not undefined.
-          extraAttributeNames.delete(propertyInfo.attributeName);
-          serverValue = getValueForProperty(
-            domElement,
-            propKey,
-            nextProp,
-            propertyInfo,
-          );
-        } else {
-          let ownNamespace = parentNamespace;
-          if (ownNamespace === HTML_NAMESPACE) {
-            ownNamespace = getIntrinsicNamespace(tag);
-          }
-          if (ownNamespace === HTML_NAMESPACE) {
-            // $FlowFixMe - Should be inferred as not undefined.
-            extraAttributeNames.delete(propKey.toLowerCase());
-          } else {
-            const standardName = getPossibleStandardName(propKey);
-            if (standardName !== null && standardName !== propKey) {
-              // If an SVG prop is supplied with bad casing, it will
-              // be successfully parsed from HTML, but will produce a mismatch
-              // (and would be incorrectly rendered on the client).
-              // However, we already warn about bad casing elsewhere.
-              // So we'll skip the misleading extra mismatch warning in this case.
-              isMismatchDueToBadCasing = true;
-              // $FlowFixMe - Should be inferred as not undefined.
-              extraAttributeNames.delete(standardName);
-            }
-            // $FlowFixMe - Should be inferred as not undefined.
-            extraAttributeNames.delete(propKey);
-          }
-          serverValue = getValueForAttribute(domElement, propKey, nextProp);
-        }
-
-        if (nextProp !== serverValue && !isMismatchDueToBadCasing) {
-          warnForPropDifference(propKey, serverValue, nextProp);
-        }
-      }
-    }
-  }
-
-  if (__DEV__) {
-    // $FlowFixMe - Should be inferred as not undefined.
-    if (extraAttributeNames.size > 0 && !suppressHydrationWarning) {
-      // $FlowFixMe - Should be inferred as not undefined.
-      warnForExtraAttributes(extraAttributeNames);
     }
   }
 
