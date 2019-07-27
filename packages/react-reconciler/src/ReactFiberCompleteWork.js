@@ -439,8 +439,7 @@ if (supportsMutation) {
     const portalOrRoot: {
       containerInfo: Container,
       pendingChildren: ChildSet,
-    } =
-      workInProgress.stateNode;
+    } = workInProgress.stateNode;
     const childrenUnchanged = workInProgress.firstEffect === null;
     if (childrenUnchanged) {
       // No changes, just reuse the existing instance.
@@ -1180,8 +1179,7 @@ function completeWork(
         let fundamentalInstance: ReactFundamentalComponentInstance<
           any,
           any,
-        > | null =
-          workInProgress.stateNode;
+        > | null = workInProgress.stateNode;
 
         if (fundamentalInstance === null) {
           const getInitialState = fundamentalImpl.getInitialState;

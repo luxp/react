@@ -359,11 +359,9 @@ export function scheduleUpdateOnFiber(
   expirationTime: ExpirationTime,
 ) {
   checkForNestedUpdates();
-  warnAboutInvalidUpdatesOnClassComponentsInDEV(fiber);
 
   const root = markUpdateTimeFromFiberToRoot(fiber, expirationTime);
   if (root === null) {
-    warnAboutUpdateOnUnmountedFiberInDEV(fiber);
     return;
   }
 
@@ -594,13 +592,6 @@ export function flushDiscreteUpdates() {
     (executionContext & (BatchedContext | RenderContext | CommitContext)) !==
     NoContext
   ) {
-    if (__DEV__ && (executionContext & RenderContext) !== NoContext) {
-      warning(
-        false,
-        'unstable_flushDiscreteUpdates: Cannot flush updates when React is ' +
-          'already rendering.',
-      );
-    }
     // We're already rendering, so we can't synchronously flush pending work.
     // This is probably a nested event dispatch triggered by a lifecycle/effect,
     // like `el.focus()`. Exit.
@@ -883,9 +874,7 @@ function renderRoot(
           resetContextDependencies();
           ReactCurrentDispatcher.current = prevDispatcher;
           if (enableSchedulerTracing) {
-            __interactionsRef.current = ((prevInteractions: any): Set<
-              Interaction,
-            >);
+            __interactionsRef.current = ((prevInteractions: any): Set<Interaction>);
           }
           return renderRoot.bind(null, root, currentTime);
         }
@@ -966,8 +955,6 @@ function renderRoot(
 
   // Set this to null to indicate there's no in-progress render.
   workInProgressRoot = null;
-
-  flushSuspensePriorityWarningInDEV();
 
   switch (workInProgressRootExitStatus) {
     case RootIncomplete: {
@@ -1239,7 +1226,6 @@ function performUnitOfWork(unitOfWork: Fiber): Fiber | null {
   const current = unitOfWork.alternate;
 
   startWorkTimer(unitOfWork);
-  setCurrentDebugFiberInDEV(unitOfWork);
 
   let next;
   next = beginWork(current, unitOfWork, renderExpirationTime);
@@ -1458,7 +1444,6 @@ function commitRoot(root) {
 
 function commitRootImpl(root) {
   flushPassiveEffects();
-  flushRenderPhaseStrictModeWarningsInDEV();
 
   invariant(
     (executionContext & (RenderContext | CommitContext)) === NoContext,
@@ -1733,13 +1718,10 @@ function commitRootImpl(root) {
 function commitBeforeMutationEffects() {
   while (nextEffect !== null) {
     if ((nextEffect.effectTag & Snapshot) !== NoEffect) {
-      setCurrentDebugFiberInDEV(nextEffect);
       recordEffect();
 
       const current = nextEffect.alternate;
       commitBeforeMutationEffectOnFiber(current, nextEffect);
-
-      resetCurrentDebugFiberInDEV();
     }
     nextEffect = nextEffect.nextEffect;
   }
@@ -1748,8 +1730,6 @@ function commitBeforeMutationEffects() {
 function commitMutationEffects() {
   // TODO: Should probably move the bulk of this function to commitWork.
   while (nextEffect !== null) {
-    setCurrentDebugFiberInDEV(nextEffect);
-
     const effectTag = nextEffect.effectTag;
 
     if (effectTag & ContentReset) {
@@ -1804,7 +1784,6 @@ function commitMutationEffects() {
     // TODO: Only record a mutation effect if primaryEffectTag is non-zero.
     recordEffect();
 
-    resetCurrentDebugFiberInDEV();
     nextEffect = nextEffect.nextEffect;
   }
 }
@@ -1815,8 +1794,6 @@ function commitLayoutEffects(
 ) {
   // TODO: Should probably move the bulk of this function to commitWork.
   while (nextEffect !== null) {
-    setCurrentDebugFiberInDEV(nextEffect);
-
     const effectTag = nextEffect.effectTag;
 
     if (effectTag & (Update | Callback)) {
@@ -1839,7 +1816,6 @@ function commitLayoutEffects(
       rootDoesHavePassiveEffects = true;
     }
 
-    resetCurrentDebugFiberInDEV();
     nextEffect = nextEffect.nextEffect;
   }
 }
@@ -1871,22 +1847,11 @@ export function flushPassiveEffects() {
   // change in the future.
   let effect = root.current.firstEffect;
   while (effect !== null) {
-    if (__DEV__) {
-      setCurrentDebugFiberInDEV(effect);
-      invokeGuardedCallback(null, commitPassiveHookEffects, null, effect);
-      if (hasCaughtError()) {
-        invariant(effect !== null, 'Should be working on an effect.');
-        const error = clearCaughtError();
-        captureCommitPhaseError(effect, error);
-      }
-      resetCurrentDebugFiberInDEV();
-    } else {
-      try {
-        commitPassiveHookEffects(effect);
-      } catch (error) {
-        invariant(effect !== null, 'Should be working on an effect.');
-        captureCommitPhaseError(effect, error);
-      }
+    try {
+      commitPassiveHookEffects(effect);
+    } catch (error) {
+      invariant(effect !== null, 'Should be working on an effect.');
+      captureCommitPhaseError(effect, error);
     }
     const nextNextEffect = effect.nextEffect;
     // Remove nextEffect pointer to assist GC
@@ -2122,16 +2087,16 @@ function jnd(timeElapsed: number) {
   return timeElapsed < 120
     ? 120
     : timeElapsed < 480
-      ? 480
-      : timeElapsed < 1080
-        ? 1080
-        : timeElapsed < 1920
-          ? 1920
-          : timeElapsed < 3000
-            ? 3000
-            : timeElapsed < 4320
-              ? 4320
-              : ceil(timeElapsed / 1960) * 1960;
+    ? 480
+    : timeElapsed < 1080
+    ? 1080
+    : timeElapsed < 1920
+    ? 1920
+    : timeElapsed < 3000
+    ? 3000
+    : timeElapsed < 4320
+    ? 4320
+    : ceil(timeElapsed / 1960) * 1960;
 }
 
 function computeMsUntilSuspenseLoadingDelay(
@@ -2174,29 +2139,6 @@ function checkForNestedUpdates() {
         'prevent infinite loops.',
     );
   }
-
-  if (__DEV__) {
-    if (nestedPassiveUpdateCount > NESTED_PASSIVE_UPDATE_LIMIT) {
-      nestedPassiveUpdateCount = 0;
-      warning(
-        false,
-        'Maximum update depth exceeded. This can happen when a component ' +
-          "calls setState inside useEffect, but useEffect either doesn't " +
-          'have a dependency array, or one of the dependencies changes on ' +
-          'every render.',
-      );
-    }
-  }
-}
-
-function flushRenderPhaseStrictModeWarningsInDEV() {
-  if (__DEV__) {
-    ReactStrictModeWarnings.flushLegacyContextWarning();
-
-    if (warnAboutDeprecatedLifecycles) {
-      ReactStrictModeWarnings.flushPendingUnsafeLifecycleWarnings();
-    }
-  }
 }
 
 function stopFinishedWorkLoopTimer() {
@@ -2226,48 +2168,9 @@ function checkForInterruption(
 }
 
 let didWarnStateUpdateForUnmountedComponent: Set<string> | null = null;
-function warnAboutUpdateOnUnmountedFiberInDEV(fiber) {
-  if (__DEV__) {
-    const tag = fiber.tag;
-    if (
-      tag !== HostRoot &&
-      tag !== ClassComponent &&
-      tag !== FunctionComponent &&
-      tag !== ForwardRef &&
-      tag !== MemoComponent &&
-      tag !== SimpleMemoComponent
-    ) {
-      // Only warn for user-defined components, not internal ones like Suspense.
-      return;
-    }
-    // We show the whole stack but dedupe on the top component's name because
-    // the problematic code almost always lies inside that component.
-    const componentName = getComponentName(fiber.type) || 'ReactComponent';
-    if (didWarnStateUpdateForUnmountedComponent !== null) {
-      if (didWarnStateUpdateForUnmountedComponent.has(componentName)) {
-        return;
-      }
-      didWarnStateUpdateForUnmountedComponent.add(componentName);
-    } else {
-      didWarnStateUpdateForUnmountedComponent = new Set([componentName]);
-    }
-    warningWithoutStack(
-      false,
-      "Can't perform a React state update on an unmounted component. This " +
-        'is a no-op, but it indicates a memory leak in your application. To ' +
-        'fix, cancel all subscriptions and asynchronous tasks in %s.%s',
-      tag === ClassComponent
-        ? 'the componentWillUnmount method'
-        : 'a useEffect cleanup function',
-      getStackByFiberInDevAndProd(fiber),
-    );
-  }
-}
 
 let beginWork;
 beginWork = originalBeginWork;
-
-function warnAboutInvalidUpdatesOnClassComponentsInDEV(fiber) {}
 
 export const IsThisRendererActing = {current: (false: boolean)};
 
@@ -2280,8 +2183,6 @@ function warnIfNotCurrentlyActingUpdatesInDEV(fiber: Fiber): void {}
 export const warnIfNotCurrentlyActingUpdatesInDev = warnIfNotCurrentlyActingUpdatesInDEV;
 
 export function checkForWrongSuspensePriorityInDEV(sourceFiber: Fiber) {}
-
-function flushSuspensePriorityWarningInDEV() {}
 
 function computeThreadID(root, expirationTime) {
   // Interaction threads are unique per root and expiration time.
