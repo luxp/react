@@ -33,7 +33,6 @@ import {
   flushDiscreteUpdates,
   flushSync,
   flushControlled,
-  injectIntoDevTools,
   getPublicRootInstance,
   findHostInstance,
   findHostInstanceWithWarning,
@@ -41,7 +40,6 @@ import {
   IsThisRendererActing,
 } from 'react-reconciler/inline.dom';
 import {createPortal as createPortalImpl} from 'shared/ReactPortal';
-import {canUseDOM} from 'shared/ExecutionEnvironment';
 import {setBatchingImplementation} from 'events/ReactGenericBatching';
 import {
   setRestoreImplementation,
@@ -57,7 +55,6 @@ import {
 } from 'events/EventPropagators';
 import {LegacyRoot, ConcurrentRoot, BatchedRoot} from 'shared/ReactRootTags';
 import {has as hasInstance} from 'shared/ReactInstanceMap';
-import ReactVersion from 'shared/ReactVersion';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
@@ -69,7 +66,6 @@ import {
   getInstanceFromNode,
   getNodeFromInstance,
   getFiberCurrentPropsFromNode,
-  getClosestInstanceFromNode,
 } from './ReactDOMComponentTree';
 import {restoreControlledState} from './ReactDOMComponent';
 import {dispatchEvent} from '../events/ReactDOMEventListener';
@@ -542,11 +538,6 @@ function legacyRenderSubtreeIntoContainer(
   forceHydrate: boolean,
   callback: ?Function,
 ) {
-  if (__DEV__) {
-    topLevelUpdateWarnings(container);
-    warnOnInvalidCallback(callback === undefined ? null : callback, 'render');
-  }
-
   // TODO: Without `any` type, Flow says "Property cannot be accessed on any
   // member of intersection type." Whyyyyyy.
   let root: _ReactSyncRoot = (container._reactRootContainer: any);
@@ -665,15 +656,6 @@ const ReactDOM: Object = {
       isValidContainer(container),
       'Target container is not a DOM element.',
     );
-    if (__DEV__) {
-      warningWithoutStack(
-        !container._reactHasBeenPassedToCreateRootDEV,
-        'You are calling ReactDOM.render() on a container that was previously ' +
-          'passed to ReactDOM.%s(). This is not supported. ' +
-          'Did you mean to call root.render(element)?',
-        enableStableConcurrentModeAPIs ? 'createRoot' : 'unstable_createRoot',
-      );
-    }
     return legacyRenderSubtreeIntoContainer(
       null,
       element,
@@ -875,39 +857,6 @@ function warnIfReactDOMContainerInDEV(container) {
 if (enableStableConcurrentModeAPIs) {
   ReactDOM.createRoot = createRoot;
   ReactDOM.createSyncRoot = createSyncRoot;
-}
-
-const foundDevTools = injectIntoDevTools({
-  findFiberByHostInstance: getClosestInstanceFromNode,
-  bundleType: __DEV__ ? 1 : 0,
-  version: ReactVersion,
-  rendererPackageName: 'react-dom',
-});
-
-if (__DEV__) {
-  if (!foundDevTools && canUseDOM && window.top === window.self) {
-    // If we're in Chrome or Firefox, provide a download link if not installed.
-    if (
-      (navigator.userAgent.indexOf('Chrome') > -1 &&
-        navigator.userAgent.indexOf('Edge') === -1) ||
-      navigator.userAgent.indexOf('Firefox') > -1
-    ) {
-      const protocol = window.location.protocol;
-      // Don't warn in exotic cases like chrome-extension://.
-      if (/^(https?|file):$/.test(protocol)) {
-        console.info(
-          '%cDownload the React DevTools ' +
-            'for a better development experience: ' +
-            'https://fb.me/react-devtools' +
-            (protocol === 'file:'
-              ? '\nYou might need to use a local HTTP server (instead of file://): ' +
-                'https://fb.me/react-devtools-faq'
-              : ''),
-          'font-weight:bold',
-        );
-      }
-    }
-  }
 }
 
 export default ReactDOM;
