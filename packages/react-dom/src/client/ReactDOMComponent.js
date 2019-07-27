@@ -579,13 +579,6 @@ export function diffProperties(
       continue;
     }
     if (propKey === STYLE) {
-      if (__DEV__) {
-        if (nextProp) {
-          // Freeze the next style object so that we can assume it won't be
-          // mutated. We have already warned for this in the past.
-          Object.freeze(nextProp);
-        }
-      }
       if (lastProp) {
         // Unset styles on `lastProp` but not on `nextProp`.
         for (styleName in lastProp) {
