@@ -380,20 +380,11 @@ function ChildReconciler(shouldTrackSideEffects) {
     element: ReactElement,
     expirationTime: ExpirationTime,
   ): Fiber {
-    if (
-      current !== null &&
-      (current.elementType === element.type ||
-        // Keep this check inline so it only runs on the false path:
-        (__DEV__ ? isCompatibleFamilyForHotReloading(current, element) : false))
-    ) {
+    if (current !== null && current.elementType === element.type) {
       // Move based on index
       const existing = useFiber(current, element.props, expirationTime);
       existing.ref = coerceRef(returnFiber, current, element);
       existing.return = returnFiber;
-      if (__DEV__) {
-        existing._debugSource = element._source;
-        existing._debugOwner = element._owner;
-      }
       return existing;
     } else {
       // Insert
@@ -762,15 +753,6 @@ function ChildReconciler(shouldTrackSideEffects) {
     // If you change this code, also update reconcileChildrenIterator() which
     // uses the same algorithm.
 
-    if (__DEV__) {
-      // First, validate keys.
-      let knownKeys = null;
-      for (let i = 0; i < newChildren.length; i++) {
-        const child = newChildren[i];
-        knownKeys = warnOnInvalidKey(child, knownKeys);
-      }
-    }
-
     let resultingFirstChild: Fiber | null = null;
     let previousNewFiber: Fiber | null = null;
 
@@ -911,49 +893,6 @@ function ChildReconciler(shouldTrackSideEffects) {
       'An object is not an iterable. This error is likely caused by a bug in ' +
         'React. Please file an issue.',
     );
-
-    if (__DEV__) {
-      // We don't support rendering Generators because it's a mutation.
-      // See https://github.com/facebook/react/issues/12995
-      if (
-        typeof Symbol === 'function' &&
-        // $FlowFixMe Flow doesn't know about toStringTag
-        newChildrenIterable[Symbol.toStringTag] === 'Generator'
-      ) {
-        warning(
-          didWarnAboutGenerators,
-          'Using Generators as children is unsupported and will likely yield ' +
-            'unexpected results because enumerating a generator mutates it. ' +
-            'You may convert it to an array with `Array.from()` or the ' +
-            '`[...spread]` operator before rendering. Keep in mind ' +
-            'you might need to polyfill these features for older browsers.',
-        );
-        didWarnAboutGenerators = true;
-      }
-
-      // Warn about using Maps as children
-      if ((newChildrenIterable: any).entries === iteratorFn) {
-        warning(
-          didWarnAboutMaps,
-          'Using Maps as children is unsupported and will likely yield ' +
-            'unexpected results. Convert it to a sequence/iterable of keyed ' +
-            'ReactElements instead.',
-        );
-        didWarnAboutMaps = true;
-      }
-
-      // First, validate keys.
-      // We'll get a different iterator later for the main pass.
-      const newChildren = iteratorFn.call(newChildrenIterable);
-      if (newChildren) {
-        let knownKeys = null;
-        let step = newChildren.next();
-        for (; !step.done; step = newChildren.next()) {
-          const child = step.value;
-          knownKeys = warnOnInvalidKey(child, knownKeys);
-        }
-      }
-    }
 
     const newChildren = iteratorFn.call(newChildrenIterable);
     invariant(newChildren != null, 'An iterable object provided no iterator.');

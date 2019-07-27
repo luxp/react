@@ -552,13 +552,6 @@ export function createFiberFromTypeAndProps(
   if (typeof type === 'function') {
     if (shouldConstruct(type)) {
       fiberTag = ClassComponent;
-      if (__DEV__) {
-        resolvedType = resolveClassForHotReloading(resolvedType);
-      }
-    } else {
-      if (__DEV__) {
-        resolvedType = resolveFunctionForHotReloading(resolvedType);
-      }
     }
   } else if (typeof type === 'string') {
     fiberTag = HostComponent;
@@ -684,10 +677,6 @@ export function createFiberFromElement(
     mode,
     expirationTime,
   );
-  if (__DEV__) {
-    fiber._debugSource = element._source;
-    fiber._debugOwner = element._owner;
-  }
   return fiber;
 }
 

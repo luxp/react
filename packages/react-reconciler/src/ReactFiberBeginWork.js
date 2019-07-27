@@ -385,17 +385,11 @@ function updateMemoComponent(
       Component.defaultProps === undefined
     ) {
       let resolvedType = type;
-      if (__DEV__) {
-        resolvedType = resolveFunctionForHotReloading(type);
-      }
       // If this is a plain function component without default props,
       // and with only the default shallow comparison, we upgrade it
       // to a SimpleMemoComponent to allow fast path updates.
       workInProgress.tag = SimpleMemoComponent;
       workInProgress.type = resolvedType;
-      if (__DEV__) {
-        validateFunctionComponentInDev(workInProgress, type);
-      }
       return updateSimpleMemoComponent(
         current,
         workInProgress,
@@ -404,20 +398,6 @@ function updateMemoComponent(
         updateExpirationTime,
         renderExpirationTime,
       );
-    }
-    if (__DEV__) {
-      const innerPropTypes = type.propTypes;
-      if (innerPropTypes) {
-        // Inner memo component props aren't currently validated in createElement.
-        // We could move it there, but we'd still need this for lazy code path.
-        checkPropTypes(
-          innerPropTypes,
-          nextProps, // Resolved props
-          'prop',
-          getComponentName(type),
-          getCurrentFiberStackInDev,
-        );
-      }
     }
     let child = createFiberFromTypeAndProps(
       Component.type,
@@ -1545,19 +1525,6 @@ function updateSuspenseComponent(
   suspenseContext = setDefaultShallowSuspenseContext(suspenseContext);
 
   pushSuspenseContext(workInProgress, suspenseContext);
-
-  if (__DEV__) {
-    if ('maxDuration' in nextProps) {
-      if (!didWarnAboutMaxDuration) {
-        didWarnAboutMaxDuration = true;
-        warning(
-          false,
-          'maxDuration has been removed from React. ' +
-            'Remove the maxDuration prop.',
-        );
-      }
-    }
-  }
 
   // This next part is a bit confusing. If the children timeout, we switch to
   // showing the fallback children in place of the "primary" children.
