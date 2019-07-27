@@ -8,20 +8,12 @@
  */
 
 // TODO: direct imports like some-package/src/* are bad. Fix me.
-import {getCurrentFiberOwnerNameInDevOrNull} from 'react-reconciler/src/ReactCurrentFiber';
 import {registrationNameModules} from 'events/EventPluginRegistry';
-import warning from 'shared/warning';
-import {canUseDOM} from 'shared/ExecutionEnvironment';
-import warningWithoutStack from 'shared/warningWithoutStack';
 import endsWith from 'shared/endsWith';
 import type {DOMTopLevelEventType} from 'events/TopLevelEventTypes';
 import {setListenToResponderEventTypes} from '../events/DOMEventResponderSystem';
 
-import {
-  getValueForAttribute,
-  getValueForProperty,
-  setValueForProperty,
-} from './DOMPropertyOperations';
+import {setValueForProperty} from './DOMPropertyOperations';
 import {
   initWrapperState as ReactDOMInputInitWrapperState,
   getHostProps as ReactDOMInputGetHostProps,
@@ -67,29 +59,13 @@ import {
 } from '../events/ReactBrowserEventEmitter';
 import {trapEventForResponderEventSystem} from '../events/ReactDOMEventListener.js';
 import {mediaEventTypes} from '../events/DOMTopLevelEventTypes';
-import {
-  createDangerousStringForStyles,
-  setValueForStyles,
-  validateShorthandPropertyCollisionInDev,
-} from '../shared/CSSPropertyOperations';
+import {setValueForStyles} from '../shared/CSSPropertyOperations';
 import {Namespaces, getIntrinsicNamespace} from '../shared/DOMNamespaces';
-import {
-  getPropertyInfo,
-  shouldIgnoreAttribute,
-  shouldRemoveAttribute,
-} from '../shared/DOMProperty';
 import assertValidProps from '../shared/assertValidProps';
 import {DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE} from '../shared/HTMLNodeType';
 import isCustomComponent from '../shared/isCustomComponent';
-import possibleStandardNames from '../shared/possibleStandardNames';
-import {validateProperties as validateARIAProperties} from '../shared/ReactDOMInvalidARIAHook';
-import {validateProperties as validateInputProperties} from '../shared/ReactDOMNullInputValuePropHook';
-import {validateProperties as validateUnknownProperties} from '../shared/ReactDOMUnknownPropertyHook';
 
 import {enableFlareAPI} from 'shared/ReactFeatureFlags';
-
-let didWarnInvalidHydration = false;
-let didWarnShadyDOM = false;
 
 const DANGEROUSLY_SET_INNER_HTML = 'dangerouslySetInnerHTML';
 const SUPPRESS_CONTENT_EDITABLE_WARNING = 'suppressContentEditableWarning';
@@ -101,18 +77,6 @@ const HTML = '__html';
 const RESPONDERS = 'responders';
 
 const {html: HTML_NAMESPACE} = Namespaces;
-
-let warnedUnknownTags;
-let suppressHydrationWarning;
-
-let validatePropertiesInDevelopment;
-let warnForTextDifference;
-let warnForPropDifference;
-let warnForExtraAttributes;
-let warnForInvalidEventListener;
-let canDiffStyleForHydrationWarning;
-
-let normalizeHTML;
 
 function ensureListeningTo(
   rootContainerElement: Element | Node,
@@ -163,13 +127,6 @@ function setInitialDOMProperties(
     }
     const nextProp = nextProps[propKey];
     if (propKey === STYLE) {
-      if (__DEV__) {
-        if (nextProp) {
-          // Freeze the next style object so that we can assume it won't be
-          // mutated. We have already warned for this in the past.
-          Object.freeze(nextProp);
-        }
-      }
       // Relies on `updateStylesByID` not mutating `styleUpdates`.
       setValueForStyles(domElement, nextProp);
     } else if (propKey === DANGEROUSLY_SET_INNER_HTML) {
@@ -203,9 +160,6 @@ function setInitialDOMProperties(
       // on server rendering (but we *do* want to emit it in SSR).
     } else if (registrationNameModules.hasOwnProperty(propKey)) {
       if (nextProp != null) {
-        if (__DEV__ && typeof nextProp !== 'function') {
-          warnForInvalidEventListener(propKey, nextProp);
-        }
         ensureListeningTo(rootContainerElement, propKey);
       }
     } else if (nextProp != null) {
@@ -242,8 +196,6 @@ export function createElement(
   rootContainerElement: Element | Document,
   parentNamespace: string,
 ): Element {
-  let isCustomComponentTag;
-
   // We create tags in the namespace of their parent container, except HTML
   // tags get no namespace.
   const ownerDocument: Document = getOwnerDocumentFromRootContainer(
@@ -255,19 +207,6 @@ export function createElement(
     namespaceURI = getIntrinsicNamespace(type);
   }
   if (namespaceURI === HTML_NAMESPACE) {
-    if (__DEV__) {
-      isCustomComponentTag = isCustomComponent(type, props);
-      // Should this check be gated by parent namespace? Not sure we want to
-      // allow <SVG> or <mATH>.
-      warning(
-        isCustomComponentTag || type === type.toLowerCase(),
-        '<%s /> is using incorrect casing. ' +
-          'Use PascalCase for React components, ' +
-          'or lowercase for HTML elements.',
-        type,
-      );
-    }
-
     if (type === 'script') {
       // Create the script via .innerHTML so its "parser-inserted" flag is
       // set to true and it does not execute
@@ -309,26 +248,6 @@ export function createElement(
     domElement = ownerDocument.createElementNS(namespaceURI, type);
   }
 
-  if (__DEV__) {
-    if (namespaceURI === HTML_NAMESPACE) {
-      if (
-        !isCustomComponentTag &&
-        Object.prototype.toString.call(domElement) ===
-          '[object HTMLUnknownElement]' &&
-        !Object.prototype.hasOwnProperty.call(warnedUnknownTags, type)
-      ) {
-        warnedUnknownTags[type] = true;
-        warning(
-          false,
-          'The tag <%s> is unrecognized in this browser. ' +
-            'If you meant to render a React component, start its name with ' +
-            'an uppercase letter.',
-          type,
-        );
-      }
-    }
-  }
-
   return domElement;
 }
 
@@ -348,23 +267,6 @@ export function setInitialProperties(
   rootContainerElement: Element | Document,
 ): void {
   const isCustomComponentTag = isCustomComponent(tag, rawProps);
-  if (__DEV__) {
-    validatePropertiesInDevelopment(tag, rawProps);
-    if (
-      isCustomComponentTag &&
-      !didWarnShadyDOM &&
-      (domElement: any).shadyRoot
-    ) {
-      warning(
-        false,
-        '%s is using shady DOM. Using shady DOM with React can ' +
-          'cause things to break subtly.',
-        getCurrentFiberOwnerNameInDevOrNull() || 'A component',
-      );
-      didWarnShadyDOM = true;
-    }
-  }
-
   // TODO: Make sure that we check isMounted before firing any of these events.
   let props: Object;
   switch (tag) {
@@ -480,10 +382,6 @@ export function diffProperties(
   nextRawProps: Object,
   rootContainerElement: Element | Document,
 ): null | Array<mixed> {
-  if (__DEV__) {
-    validatePropertiesInDevelopment(tag, nextRawProps);
-  }
-
   let updatePayload: null | Array<any> = null;
 
   let lastProps: Object;
@@ -844,91 +742,28 @@ export function diffHydratedText(textNode: Text, text: string): boolean {
   return isDifferent;
 }
 
-export function warnForUnmatchedText(textNode: Text, text: string) {
-  if (__DEV__) {
-    warnForTextDifference(textNode.nodeValue, text);
-  }
-}
+export function warnForUnmatchedText(textNode: Text, text: string) {}
 
 export function warnForDeletedHydratableElement(
   parentNode: Element | Document,
   child: Element,
-) {
-  if (__DEV__) {
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    warningWithoutStack(
-      false,
-      'Did not expect server HTML to contain a <%s> in <%s>.',
-      child.nodeName.toLowerCase(),
-      parentNode.nodeName.toLowerCase(),
-    );
-  }
-}
+) {}
 
 export function warnForDeletedHydratableText(
   parentNode: Element | Document,
   child: Text,
-) {
-  if (__DEV__) {
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    warningWithoutStack(
-      false,
-      'Did not expect server HTML to contain the text node "%s" in <%s>.',
-      child.nodeValue,
-      parentNode.nodeName.toLowerCase(),
-    );
-  }
-}
+) {}
 
 export function warnForInsertedHydratedElement(
   parentNode: Element | Document,
   tag: string,
   props: Object,
-) {
-  if (__DEV__) {
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    warningWithoutStack(
-      false,
-      'Expected server HTML to contain a matching <%s> in <%s>.',
-      tag,
-      parentNode.nodeName.toLowerCase(),
-    );
-  }
-}
+) {}
 
 export function warnForInsertedHydratedText(
   parentNode: Element | Document,
   text: string,
-) {
-  if (__DEV__) {
-    if (text === '') {
-      // We expect to insert empty text nodes since they're not represented in
-      // the HTML.
-      // TODO: Remove this special case if we can just avoid inserting empty
-      // text nodes.
-      return;
-    }
-    if (didWarnInvalidHydration) {
-      return;
-    }
-    didWarnInvalidHydration = true;
-    warningWithoutStack(
-      false,
-      'Expected server HTML to contain a matching text node for "%s" in <%s>.',
-      text,
-      parentNode.nodeName.toLowerCase(),
-    );
-  }
-}
+) {}
 
 export function restoreControlledState(
   domElement: Element,
