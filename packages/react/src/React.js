@@ -42,14 +42,6 @@ import {
   useListener,
 } from './ReactHooks';
 import {withSuspenseConfig} from './ReactBatchConfig';
-import {
-  createElementWithValidation,
-  createFactoryWithValidation,
-  cloneElementWithValidation,
-  jsxWithValidation,
-  jsxWithValidationStatic,
-  jsxWithValidationDynamic,
-} from './ReactElementValidator';
 import ReactSharedInternals from './ReactSharedInternals';
 import createFundamental from 'shared/createFundamentalComponent';
 import createResponder from 'shared/createEventResponder';
@@ -93,10 +85,10 @@ const React = {
   Suspense: REACT_SUSPENSE_TYPE,
   unstable_SuspenseList: REACT_SUSPENSE_LIST_TYPE,
 
-  createElement: __DEV__ ? createElementWithValidation : createElement,
-  cloneElement: __DEV__ ? cloneElementWithValidation : cloneElement,
-  createFactory: __DEV__ ? createFactoryWithValidation : createFactory,
-  isValidElement: isValidElement,
+  createElement,
+  cloneElement,
+  createFactory,
+  isValidElement,
 
   version: ReactVersion,
 
@@ -120,16 +112,10 @@ if (enableFundamentalAPI) {
 // Also let's not expose their names in stable builds.
 
 if (enableJSXTransformAPI) {
-  if (__DEV__) {
-    React.jsxDEV = jsxWithValidation;
-    React.jsx = jsxWithValidationDynamic;
-    React.jsxs = jsxWithValidationStatic;
-  } else {
-    React.jsx = jsx;
-    // we may want to special case jsxs internally to take advantage of static children.
-    // for now we can ship identical prod functions
-    React.jsxs = jsx;
-  }
+  React.jsx = jsx;
+  // we may want to special case jsxs internally to take advantage of static children.
+  // for now we can ship identical prod functions
+  React.jsxs = jsx;
 }
 
 export default React;
